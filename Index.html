@@ -1,0 +1,756 @@
+import SwiftUI
+// ─────────────────────────────────────────
+// MARK: - Data Models
+// ─────────────────────────────────────────
+enum StockLevel: String {
+case high = "充⾜"
+case medium = "僅剩少量"
+case low = "快售罄"
+case sold = "已售罄"
+var color: Color {
+switch self {
+case .high: return .green
+case .medium: return Color(red: 1, green: 0.65, blue: 0) // amber
+case .low: return .orange
+case .sold: return .red
+}
+}
+var icon: String {
+switch self {
+case .high: return "checkmark.circle.fill"
+case .medium: return "exclamationmark.circle.fill"
+case .low: return "flame.fill"
+case .sold: return "xmark.circle.fill"
+}
+}
+var barFraction: Double {
+switch self {
+case .high: return 0.85
+case .medium: return 0.45
+case .low: return 0.15
+case .sold: return 0.0
+}
+}
+}
+struct Product: Identifiable {
+let id = UUID()
+let name: String
+let location: String
+let district: String
+let price: String
+let originalPrice: String? let icon: String
+var stockLevel: StockLevel
+var watchCount: Int var reportCount: Int
+var lastUpdated: String let category: String
+let isHot: Bool
+var isLive: Bool // crossed-out price for "deal" feel
+// social proof
+// e.g. "3 分鐘前"
+// real-time reporting active
+}
+struct PublishRecord: Identifiable {
+let id = UUID()
+let type: String let title: String
+let date: String
+let status: String
+let statusColor: Color
+// "懸賞" or "情報"
+}
+// ─────────────────────────────────────────
+// MARK: - Mock Data
+// ─────────────────────────────────────────
+let mockProducts: [Product] = [
+Product(name: "⽇本特濃朱古⼒奶 (江崎固⼒果)", location: "旺⾓ 759 阿信屋", district: "旺⾓",
+price: "$12.5", originalPrice: "$16", icon: "takeoutbag.and.cup.and.straw.fill",
+stockLevel: .low, watchCount: 83, reportCount: 12, lastUpdated: "2 分鐘前",
+category: " 飲食", isHot: true, isLive: true),
+Product(name: "樂⾼ 10333 索倫之塔", location: "信和中⼼ 玩具狂熱", district: "旺⾓",
+price: "$1,299", originalPrice: nil, icon: "cube.box.fill",
+stockLevel: .sold, watchCount: 241, reportCount: 45, lastUpdated: "18 分鐘前",
+category: " 玩具", isHot: true, isLive: false),
+Product(name: "SK-II 神仙⽔ 230ml", location: "銅鑼灣 SOGO 美容", district: "銅鑼灣",
+price: "$980", originalPrice: "$1,200", icon: "sparkles",
+stockLevel: .medium, watchCount: 156, reportCount: 28, lastUpdated: "5 分鐘前",
+category: " 美妝", isHot: false, isLive: true),
+Product(name: "⼭葡萄熊軟糖 (限定版)", location: "尖沙咀 Donki 地庫", district: "尖沙咀",
+price: "$35", originalPrice: "$45", icon: "heart.circle.fill",
+stockLevel: .high, watchCount: 62, reportCount: 8, lastUpdated: "剛剛",
+category: " 飲食", isHot: false, isLive: true),
+Product(name: "Fujifilm 拍立得 Instax Mini 99", location: "旺⾓ 豐澤電器", district: "旺⾓",
+price: "$899", originalPrice: nil, icon: "camera.fill",
+stockLevel: .medium, watchCount: 44, reportCount: 6, lastUpdated: "12 分鐘前",
+category: " ⽣活", isHot: false, isLive: false),
+Product(name: "貓主⼦天然吞拿⿂罐頭 (泰國)", location: "沙⽥ 寵物王國", district: "沙⽥",
+price: "$8.9", originalPrice: "$12", icon: "pawprint.fill",
+stockLevel: .high, watchCount: 31, reportCount: 5, lastUpdated: "27 分鐘前",
+category: " ⽑孩", isHot: false, isLive: false),
+]
+let mockPublishRecords: [PublishRecord] = [
+PublishRecord(type: "情報", title: "旺⾓ 759 ⽇本朱古⼒奶現貨", date: "今⽇ 14:32",
+status: "已驗證 ✓", statusColor: .green),
+PublishRecord(type: "懸賞", title: "搵緊樂⾼ Icons 系列花束", date: "昨⽇ 09:15",
+status: "進⾏中", statusColor: .orange),
+PublishRecord(type: "情報", title: "銅鑼灣 SOGO SK-II 特價", date: "3 ⽇前",
+status: "已過期", statusColor: .gray),
+]
+// ─────────────────────────────────────────
+// MARK: - App Entry
+// ─────────────────────────────────────────
+struct ContentView: View {
+var body: some View {
+TabView {
+HomeFeedView()
+.tabItem {
+Image(systemName: "magnifyingglass.circle.fill")
+Text("尋寶雷達")
+}
+PublishChoiceView()
+.tabItem {
+Image(systemName: "plus.circle.fill")
+Text("發佈")
+}
+ProfileAndShopView()
+.tabItem {
+Image(systemName: "person.crop.circle.fill")
+Text("我的檔案")
+}
+}
+.accentColor(Color(red: 1, green: 0.6, blue: 0)) // Amazon orange
+.preferredColorScheme(.light) // Amazon is light!
+}
+}
+// ─────────────────────────────────────────
+// MARK: - Page 1: Home Feed
+// ─────────────────────────────────────────
+struct HomeFeedView: View {
+let categories = ["全部", " 飲食", " 美妝", " 玩具", " ⽑孩", " ⽣活"]
+@State private var selectedCategory = "全部"
+@State private var searchText = ""
+@State private var selectedProduct: Product? = nil
+let amazonOrange = Color(red: 1, green: 0.6, blue: 0)
+let amazonYellow = Color(red: 1, green: 0.87, blue: 0.2)
+var filtered: [Product] {
+mockProducts.filter { p in
+let catMatch = selectedCategory == "全部" || p.category == selectedCategory
+let searchMatch = searchText.isEmpty || p.name.localizedCaseInsensitiveContains(s
+return catMatch && searchMatch
+}
+}
+var body: some View {
+NavigationView {
+ZStack {
+Color(UIColor.systemGroupedBackground).edgesIgnoringSafeArea(.all)
+VStack(spacing: 0) {
+// ── Amazon-style header bar ──
+VStack(spacing: 10) {
+HStack {
+VStack(alignment: .leading, spacing: 1) {
+Text(" 送貨⾄：香港全區")
+.font(.caption2).foregroundColor(.white.opacity(0.85))
+Text("尋寶雷達").font(.title2).fontWeight(.heavy).foregroundCo
+}
+Spacer()
+// Live indicator
+HStack(spacing: 4) {
+Circle().fill(Color.red).frame(width: 8, height: 8)
+.overlay(Circle().stroke(Color.red.opacity(0.4), lineWidt
+Text("LIVE").font(.caption).fontWeight(.heavy).foregroundColo
+}
+.padding(.horizontal, 10).padding(.vertical, 5)
+.background(Color.white).cornerRadius(20)
+}
+// Search bar
+HStack {
+Image(systemName: "magnifyingglass").foregroundColor(.gray)
+TextField("搜尋產品、地點...", text: $searchText)
+if !searchText.isEmpty {
+Button(action: { searchText = "" }) {
+Image(systemName: "xmark.circle.fill").foregroundColor(.g
+}
+}
+}
+.padding(11)
+.background(Color.white)
+.cornerRadius(10)
+}
+)
+.padding(.horizontal, 16)
+.padding(.vertical, 12)
+.background(
+LinearGradient(colors: [Color(red: 0.18, green: 0.18, blue: 0.18), Co
+startPoint: .top, endPoint: .bottom)
+// ── Category pills ──
+ScrollView(.horizontal, showsIndicators: false) {
+HStack(spacing: 8) {
+ForEach(categories, id: \.self) { cat in
+Button(action: { selectedCategory = cat }) {
+Text(cat)
+.font(.subheadline).fontWeight(.semibold)
+.padding(.horizontal, 14).padding(.vertical, 7)
+.background(selectedCategory == cat ? amazonOrange :
+.foregroundColor(selectedCategory == cat ? .white : C
+.cornerRadius(20)
+.shadow(color: .black.opacity(0.08), radius: 3, x: 0,
+}
+}
+}
+.padding(.horizontal, 16).padding(.vertical, 10)
+}
+.background(Color(UIColor.systemGroupedBackground))
+// ── Results count + sort ──
+HStack {
+Text("\(filtered.count) 個情報")
+.font(.caption).foregroundColor(.secondary)
+Spacer()
+HStack(spacing: 4) {
+Image(systemName: "arrow.up.arrow.down")
+Text("最新優先")
+}
+.font(.caption).foregroundColor(amazonOrange)
+}
+.padding(.horizontal, 16).padding(.bottom, 4)
+// ── Feed ──
+ScrollView {
+LazyVStack(spacing: 12) {
+ForEach(filtered) { product in
+Button(action: { selectedProduct = product }) {
+ProductCard(product: product)
+}
+.buttonStyle(PlainButtonStyle())
+}
+}
+.padding(.horizontal, 16)
+.padding(.bottom, 24)
+}
+}
+}
+}
+.navigationBarHidden(true)
+.sheet(item: $selectedProduct) { p in
+ProductDetailView(product: p)
+}
+}
+}
+// ─────────────────────────────────────────
+// MARK: - Product Card (Amazon Psychology)
+// ─────────────────────────────────────────
+struct ProductCard: View {
+let product: Product
+let amazonOrange = Color(red: 1, green: 0.6, blue: 0)
+var body: some View {
+VStack(alignment: .leading, spacing: 0) {
+// Top row: badges
+HStack(spacing: 6) {
+if product.isHot {
+Label("⼤熱", systemImage: "flame.fill")
+.font(.caption2).fontWeight(.heavy)
+.padding(.horizontal, 7).padding(.vertical, 3)
+.background(Color.red).foregroundColor(.white).cornerRadius(4)
+}
+if product.isLive {
+HStack(spacing: 3) {
+Circle().fill(Color.red).frame(width: 5, height: 5)
+Text("LIVE 即時").font(.caption2).fontWeight(.heavy)
+}
+.padding(.horizontal, 7).padding(.vertical, 3)
+.background(Color.red.opacity(0.12)).foregroundColor(.red).cornerRadius(4
+}
+Spacer()
+// Last updated — freshness signal
+Text(" \(product.lastUpdated)")
+.font(.caption2).foregroundColor(.secondary)
+}
+.padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 8)
+HStack(alignment: .top, spacing: 12) {
+// Icon placeholder (replace with AsyncImage for real app)
+ZStack {
+RoundedRectangle(cornerRadius: 10)
+.fill(Color(UIColor.systemGray6))
+.frame(width: 80, height: 80)
+Image(systemName: product.icon)
+.font(.system(size: 36))
+.foregroundColor(amazonOrange)
+}
+VStack(alignment: .leading, spacing: 5) {
+Text(product.name)
+.font(.subheadline).fontWeight(.semibold)
+.foregroundColor(Color(UIColor.label))
+.lineLimit(2)
+// Price row
+HStack(alignment: .firstTextBaseline, spacing: 6) {
+Text(product.price)
+.font(.title3).fontWeight(.heavy)
+.foregroundColor(product.stockLevel == .sold ? .gray : Color(red:
+if let orig = product.originalPrice {
+Text(orig)
+.font(.caption)
+.strikethrough()
+.foregroundColor(.secondary)
+}
+}
+// Location
+Label(product.location, systemImage: "mappin.and.ellipse")
+.font(.caption).foregroundColor(.secondary)
+.lineLimit(1)
+// Social proof — "83 ⼈正在睇"
+if product.watchCount > 0 {
+Text(" \(product.watchCount) ⼈正在關注")
+.font(.caption2)
+.foregroundColor(product.watchCount > 100 ? .red : .secondary)
+}
+}
+}
+.padding(.horizontal, 14)
+// ── Stock Level Bar ──
+VStack(alignment: .leading, spacing: 4) {
+HStack {
+Image(systemName: product.stockLevel.icon)
+.foregroundColor(product.stockLevel.color)
+.font(.caption)
+Text(product.stockLevel.rawValue)
+.font(.caption).fontWeight(.bold)
+.foregroundColor(product.stockLevel.color)
+Spacer()
+Text("\(product.reportCount) 個⼈回報")
+.font(.caption2).foregroundColor(.secondary)
+}
+GeometryReader { geo in
+ZStack(alignment: .leading) {
+Capsule().fill(Color(UIColor.systemGray5)).frame(height: 6)
+Capsule()
+.fill(product.stockLevel.color)
+.frame(width: geo.size.width * product.stockLevel.barFraction, he
+}
+}
+.frame(height: 6)
+}
+.padding(.horizontal, 14).padding(.top, 10)
+// ── CTA Buttons ──
+HStack(spacing: 10) {
+Button(action: {}) {
+Label(" 𥄫住", systemImage: "")
+.font(.subheadline).fontWeight(.bold)
+.frame(maxWidth: .infinity).padding(.vertical, 10)
+.background(amazonOrange)
+.foregroundColor(.white)
+.cornerRadius(8)
+}
+Button(action: {}) {
+Text(" 更新庫存")
+.font(.subheadline).fontWeight(.bold)
+.frame(maxWidth: .infinity).padding(.vertical, 10)
+.background(Color(UIColor.systemGray6))
+.foregroundColor(Color(UIColor.label))
+.cornerRadius(8)
+}
+}
+.padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 14)
+}
+.background(Color.white)
+.cornerRadius(14)
+.shadow(color: .black.opacity(0.07), radius: 6, x: 0, y: 2)
+}
+}
+// ─────────────────────────────────────────
+// MARK: - Product Detail Sheet
+// ─────────────────────────────────────────
+struct ProductDetailView: View {
+let product: Product
+@Environment(\.dismiss) var dismiss
+@State private var stockCount: Int = 5 // user can update live
+let amazonOrange = Color(red: 1, green: 0.6, blue: 0)
+var body: some View {
+NavigationView {
+ScrollView {
+VStack(alignment: .leading, spacing: 20) {
+// Hero icon
+ZStack {
+RoundedRectangle(cornerRadius: 16)
+.fill(Color(UIColor.systemGray6))
+.frame(height: 200)
+Image(systemName: product.icon)
+.font(.system(size: 80))
+.foregroundColor(amazonOrange)
+}
+VStack(alignment: .leading, spacing: 8) {
+Text(product.name).font(.title2).fontWeight(.heavy)
+HStack(alignment: .firstTextBaseline, spacing: 8) {
+Text(product.price).font(.title).fontWeight(.heavy)
+.foregroundColor(Color(red: 0.7, green: 0, blue: 0))
+if let orig = product.originalPrice {
+Text(orig).font(.body).strikethrough().foregroundColor(.secon
+let saved = "慳到！"
+Text(saved).font(.caption).foregroundColor(.green).fontWeight
+}
+}
+Label(product.location, systemImage: "mappin.and.ellipse")
+.foregroundColor(.secondary)
+}
+.padding(.horizontal)
+// ── Live Stock Update ──
+VStack(alignment: .leading, spacing: 12) {
+HStack {
+Image(systemName: "gauge.with.dots.needle.67percent")
+.foregroundColor(amazonOrange)
+Text("即時貨量更新").font(.headline)
+Spacer()
+if product.isLive {
+HStack(spacing: 3) {
+Circle().fill(Color.red).frame(width: 6, height: 6)
+Text("LIVE").font(.caption).fontWeight(.heavy).foreground
+}
+}
+}
+HStack(spacing: 16) {
+Button(action: { if stockCount > 0 { stockCount -= 1 } }) {
+Image(systemName: "minus.circle.fill")
+.font(.system(size: 32)).foregroundColor(.red)
+}
+VStack {
+Text("\(stockCount)").font(.system(size: 40, weight: .heavy))
+Text("⽬測剩餘件數").font(.caption).foregroundColor(.secondary)
+}
+.frame(minWidth: 80)
+Button(action: { stockCount += 1 }) {
+Image(systemName: "plus.circle.fill")
+.font(.system(size: 32)).foregroundColor(.green)
+}
+}
+.frame(maxWidth: .infinity)
+.padding()
+.background(Color(UIColor.systemGray6))
+.cornerRadius(12)
+Button(action: {}) {
+Label("提交最新庫存", systemImage: "arrow.up.circle.fill")
+.font(.subheadline).fontWeight(.bold)
+.frame(maxWidth: .infinity).padding(.vertical, 12)
+.background(amazonOrange).foregroundColor(.white)
+.cornerRadius(10)
+}
+}
+.padding(.horizontal)
+// ── Social proof ──
+VStack(alignment: .leading, spacing: 8) {
+Text("情報可信度").font(.headline).padding(.horizontal)
+HStack(spacing: 20) {
+StatBadge(value: "\(product.watchCount)", label: "⼈關注", icon: "
+StatBadge(value: "\(product.reportCount)", label: "⼈回報", icon:
+StatBadge(value: product.lastUpdated, label: "最後更新", icon: "cl
+.padding(.horizontal)
+}
+}
+Spacer(minLength: 40)
+}
+.padding(.top)
+}
+.navigationBarTitleDisplayMode(.inline)
+.toolbar {
+ToolbarItem(placement: .navigationBarTrailing) {
+Button("完成") { dismiss() }
+.fontWeight(.bold).foregroundColor(amazonOrange)
+}
+}
+}
+}
+}
+struct StatBadge: View {
+let value: String
+let label: String
+let icon: String
+let color: Color
+var body: some View {
+VStack(spacing: 4) {
+Image(systemName: icon).font(.title3).foregroundColor(color)
+Text(value).font(.subheadline).fontWeight(.heavy)
+Text(label).font(.caption2).foregroundColor(.secondary)
+}
+.frame(maxWidth: .infinity)
+.padding(.vertical, 12)
+.background(color.opacity(0.08))
+.cornerRadius(10)
+}
+}
+// ─────────────────────────────────────────
+// MARK: - Page 2: Publish
+// ─────────────────────────────────────────
+struct PublishChoiceView: View {
+@State private var showWantedForm = false
+@State private var showReportForm = false
+let amazonOrange = Color(red: 1, green: 0.6, blue: 0)
+var body: some View {
+NavigationView {
+ZStack {
+Color(UIColor.systemGroupedBackground).edgesIgnoringSafeArea(.all)
+VStack(spacing: 24) {
+VStack(spacing: 6) {
+Text("發佈情報").font(.largeTitle).fontWeight(.heavy)
+Text("選擇你要做嘅嘢").font(.subheadline).foregroundColor(.secondary)
+}
+.padding(.top, 40)
+// Wanted card
+Button(action: { showWantedForm = true }) {
+PublishOptionCard(
+icon: "megaphone.fill",
+title: " 發佈懸賞",
+subtitle: "我想搵某樣嘢，請⼤家幫⼿",
+tag: "最多⼈⽤",
+tagColor: .blue,
+bgColor: Color.blue.opacity(0.07),
+iconColor: .blue
+)
+}
+.sheet(isPresented: $showWantedForm) { WantedFormView() }
+// Report card
+Button(action: { showReportForm = true }) {
+PublishOptionCard(
+icon: "camera.viewfinder",
+title: " 回報現貨",
+subtitle: "我⾒到貨，分享俾有需要嘅⼈",
+tag: "賺⾦幣",
+tagColor: .orange,
+bgColor: Color.orange.opacity(0.07),
+iconColor: amazonOrange
+)
+}
+.sheet(isPresented: $showReportForm) { ReportFormView() }
+// Tip box — Amazon-style urgency
+HStack(alignment: .top, spacing: 10) {
+Image(systemName: "lightbulb.fill").foregroundColor(amazonOrange)
+Text("每次成功回報可獲 **+10 ⾦幣**，換取平台獨家折扣！")
+.font(.footnote).foregroundColor(.secondary)
+}
+.padding(14)
+.background(Color(red: 1, green: 0.87, blue: 0.2).opacity(0.25))
+.cornerRadius(10)
+.padding(.horizontal)
+Spacer()
+}
+.padding(24)
+}
+.navigationBarHidden(true)
+}
+}
+}
+struct PublishOptionCard: View {
+let icon: String
+let title: String
+let subtitle: String
+let tag: String
+let tagColor: Color
+let bgColor: Color
+let iconColor: Color
+var body: some View {
+HStack(spacing: 16) {
+ZStack {
+Circle().fill(iconColor.opacity(0.15)).frame(width: 60, height: 60)
+Image(systemName: icon).font(.system(size: 26)).foregroundColor(iconColor)
+}
+VStack(alignment: .leading, spacing: 4) {
+HStack {
+Text(title).font(.headline).foregroundColor(Color(UIColor.label))
+Text(tag).font(.caption2).fontWeight(.bold)
+.padding(.horizontal, 7).padding(.vertical, 3)
+.background(tagColor.opacity(0.15)).foregroundColor(tagColor).cornerR
+}
+Text(subtitle).font(.subheadline).foregroundColor(.secondary).lineLimit(2)
+}
+Spacer()
+Image(systemName: "chevron.right").foregroundColor(.secondary)
+}
+.padding(18)
+.background(bgColor)
+.background(Color.white)
+.cornerRadius(16)
+.shadow(color: .black.opacity(0.06), radius: 5, x: 0, y: 2)
+}
+}
+// ─────────────────────────────────────────
+// MARK: - Publish Forms
+// ─────────────────────────────────────────
+struct WantedFormView: View {
+@Environment(\.dismiss) var dismiss
+@State private var productName = ""
+@State private var preferredLocation = ""
+@State private var maxPrice = ""
+@State private var notes = ""
+let amazonOrange = Color(red: 1, green: 0.6, blue: 0)
+var body: some View {
+NavigationView {
+Form {
+Section(header: Text("產品詳情")) {
+TextField("產品名稱（例：⼭葡萄熊軟糖）", text: $productName)
+TextField("希望搵到嘅地區（例：旺⾓、銅鑼灣）", text: $preferredLocation)
+TextField("願意出嘅最⾼價錢", text: $maxPrice)
+.keyboardType(.decimalPad)
+}
+Section(header: Text("備註")) {
+TextField("其他要求...（例：需要正版、⽇本版）", text: $notes)
+}
+Section {
+Button(action: { dismiss() }) {
+Text(" 發佈懸賞")
+.font(.headline).fontWeight(.bold)
+.frame(maxWidth: .infinity)
+.foregroundColor(.white)
+}
+.listRowBackground(amazonOrange)
+}
+}
+.navigationTitle("發佈懸賞")
+.navigationBarTitleDisplayMode(.inline)
+.toolbar {
+ToolbarItem(placement: .navigationBarLeading) {
+Button("取消") { dismiss() }
+}
+}
+}
+}
+}
+struct ReportFormView: View {
+@Environment(\.dismiss) var dismiss
+@State private var productName = ""
+@State private var location = ""
+@State private var price = ""
+@State private var stockAmount = 5
+@State private var notes = ""
+let amazonOrange = Color(red: 1, green: 0.6, blue: 0)
+var body: some View {
+NavigationView {
+Form {
+Section(header: Text("產品資料")) {
+TextField("產品名稱", text: $productName)
+TextField("商店 / 位置（越詳細越好）", text: $location)
+TextField("售價（例：$12.5）", text: $price)
+.keyboardType(.decimalPad)
+Section(header: Text("即時貨量")) {
+Stepper("⽬測剩餘：\(stockAmount) 件", value: $stockAmount, in: 0...999)
+}
+}
+Section(header: Text("備註")) {
+TextField("例：限購 2 件、需會員卡", text: $notes)
+}
+Section {
+Button(action: { dismiss() }) {
+Text(" 提交情報（+10 ）")
+.font(.headline).fontWeight(.bold)
+.frame(maxWidth: .infinity)
+.foregroundColor(.white)
+}
+.listRowBackground(amazonOrange)
+}
+}
+.navigationTitle("回報現貨")
+.navigationBarTitleDisplayMode(.inline)
+.toolbar {
+ToolbarItem(placement: .navigationBarLeading) {
+Button("取消") { dismiss() }
+}
+}
+}
+}
+}
+// ─────────────────────────────────────────
+// MARK: - Page 3: Profile
+// ─────────────────────────────────────────
+struct ProfileAndShopView: View {
+let amazonOrange = Color(red: 1, green: 0.6, blue: 0)
+let amazonYellow = Color(red: 1, green: 0.87, blue: 0.2)
+var body: some View {
+NavigationView {
+ScrollView {
+VStack(spacing: 0) {
+// ── Profile header ──
+ZStack(alignment: .bottomLeading) {
+LinearGradient(colors: [Color(red: 0.18, green: 0.18, blue: 0.18), Co
+startPoint: .top, endPoint: .bottom)
+.frame(height: 160)
+HStack(alignment: .bottom, spacing: 14) {
+ZStack {
+Circle().fill(amazonOrange).frame(width: 72, height: 72)
+Text("俊").font(.system(size: 32, weight: .heavy)).foreground
+}
+VStack(alignment: .leading, spacing: 3) {
+Text("Partner 俊煒").font(.title2).fontWeight(.heavy).foregrou
+Text(" ⾸席排雷兵 · Lv.7").font(.subheadline).foregroundColor
+}
+Spacer()
+}
+.padding(.horizontal, 20)
+.padding(.bottom, 16)
+}
+// ── Coin balance ──
+HStack(spacing: 16) {
+VStack(spacing: 2) {
+Text("1,250 ").font(.title3).fontWeight(.heavy).foregroundColor
+Text("⾦幣餘額").font(.caption).foregroundColor(.secondary)
+}
+Divider().frame(height: 36)
+VStack(spacing: 2) {
+Text("23").font(.title3).fontWeight(.heavy)
+Text("情報發佈").font(.caption).foregroundColor(.secondary)
+}
+Divider().frame(height: 36)
+VStack(spacing: 2) {
+Text("98%").font(.title3).fontWeight(.heavy).foregroundColor(.gre
+Text("可信度").font(.caption).foregroundColor(.secondary)
+}
+}
+.frame(maxWidth: .infinity)
+.padding(.vertical, 16)
+.background(Color.white)
+.shadow(color: .black.opacity(0.05), radius: 4, y: 2)
+// ── Publish history ──
+VStack(alignment: .leading, spacing: 0) {
+Text("我的發佈記錄")
+.font(.headline)
+.padding(.horizontal, 16)
+.padding(.top, 20)
+.padding(.bottom, 10)
+ForEach(mockPublishRecords) { record in
+PublishRecordRow(record: record)
+if record.id != mockPublishRecords.last?.id {
+Divider().padding(.leading, 60)
+}
+}
+}
+.background(Color.white)
+.cornerRadius(14)
+.shadow(color: .black.opacity(0.06), radius: 5, x: 0, y: 2)
+.padding(.horizontal, 16)
+.padding(.top, 20)
+Spacer(minLength: 40)
+}
+}
+.background(Color(UIColor.systemGroupedBackground))
+.navigationBarHidden(true)
+}
+}
+}
+struct PublishRecordRow: View {
+let record: PublishRecord
+let amazonOrange = Color(red: 1, green: 0.6, blue: 0)
+var body: some View {
+HStack(spacing: 14) {
+ZStack {
+RoundedRectangle(cornerRadius: 8)
+.fill(record.type == "懸賞" ? Color.blue.opacity(0.12) : amazonOrange.opac
+.frame(width: 40, height: 40)
+Image(systemName: record.type == "懸賞" ? "megaphone.fill" : "camera.fill")
+.foregroundColor(record.type == "懸賞" ? .blue : amazonOrange)
+VStack(alignment: .leading, spacing: 3) {
+Text(record.title).font(.subheadline).fontWeight(.semibold).lineLimit(1)
+Text(record.date).font(.caption).foregroundColor(.secondary)
+}
+}
+Spacer()
+Text(record.status)
+.font(.caption).fontWeight(.bold)
+.foregroundColor(record.statusColor)
+.padding(.horizontal, 8).padding(.vertical, 4)
+.background(record.statusColor.opacity(0.1))
+.cornerRadius(6)
+}
+.padding(.horizontal, 16)
+.padding(.vertical, 12)
+}
+}
