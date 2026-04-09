@@ -1,756 +1,766 @@
-import SwiftUI
-// ─────────────────────────────────────────
-// MARK: - Data Models
-// ─────────────────────────────────────────
-enum StockLevel: String {
-case high = "充⾜"
-case medium = "僅剩少量"
-case low = "快售罄"
-case sold = "已售罄"
-var color: Color {
-switch self {
-case .high: return .green
-case .medium: return Color(red: 1, green: 0.65, blue: 0) // amber
-case .low: return .orange
-case .sold: return .red
-}
-}
-var icon: String {
-switch self {
-case .high: return "checkmark.circle.fill"
-case .medium: return "exclamationmark.circle.fill"
-case .low: return "flame.fill"
-case .sold: return "xmark.circle.fill"
-}
-}
-var barFraction: Double {
-switch self {
-case .high: return 0.85
-case .medium: return 0.45
-case .low: return 0.15
-case .sold: return 0.0
-}
-}
-}
-struct Product: Identifiable {
-let id = UUID()
-let name: String
-let location: String
-let district: String
-let price: String
-let originalPrice: String? let icon: String
-var stockLevel: StockLevel
-var watchCount: Int var reportCount: Int
-var lastUpdated: String let category: String
-let isHot: Bool
-var isLive: Bool // crossed-out price for "deal" feel
-// social proof
-// e.g. "3 分鐘前"
-// real-time reporting active
-}
-struct PublishRecord: Identifiable {
-let id = UUID()
-let type: String let title: String
-let date: String
-let status: String
-let statusColor: Color
-// "懸賞" or "情報"
-}
-// ─────────────────────────────────────────
-// MARK: - Mock Data
-// ─────────────────────────────────────────
-let mockProducts: [Product] = [
-Product(name: "⽇本特濃朱古⼒奶 (江崎固⼒果)", location: "旺⾓ 759 阿信屋", district: "旺⾓",
-price: "$12.5", originalPrice: "$16", icon: "takeoutbag.and.cup.and.straw.fill",
-stockLevel: .low, watchCount: 83, reportCount: 12, lastUpdated: "2 分鐘前",
-category: " 飲食", isHot: true, isLive: true),
-Product(name: "樂⾼ 10333 索倫之塔", location: "信和中⼼ 玩具狂熱", district: "旺⾓",
-price: "$1,299", originalPrice: nil, icon: "cube.box.fill",
-stockLevel: .sold, watchCount: 241, reportCount: 45, lastUpdated: "18 分鐘前",
-category: " 玩具", isHot: true, isLive: false),
-Product(name: "SK-II 神仙⽔ 230ml", location: "銅鑼灣 SOGO 美容", district: "銅鑼灣",
-price: "$980", originalPrice: "$1,200", icon: "sparkles",
-stockLevel: .medium, watchCount: 156, reportCount: 28, lastUpdated: "5 分鐘前",
-category: " 美妝", isHot: false, isLive: true),
-Product(name: "⼭葡萄熊軟糖 (限定版)", location: "尖沙咀 Donki 地庫", district: "尖沙咀",
-price: "$35", originalPrice: "$45", icon: "heart.circle.fill",
-stockLevel: .high, watchCount: 62, reportCount: 8, lastUpdated: "剛剛",
-category: " 飲食", isHot: false, isLive: true),
-Product(name: "Fujifilm 拍立得 Instax Mini 99", location: "旺⾓ 豐澤電器", district: "旺⾓",
-price: "$899", originalPrice: nil, icon: "camera.fill",
-stockLevel: .medium, watchCount: 44, reportCount: 6, lastUpdated: "12 分鐘前",
-category: " ⽣活", isHot: false, isLive: false),
-Product(name: "貓主⼦天然吞拿⿂罐頭 (泰國)", location: "沙⽥ 寵物王國", district: "沙⽥",
-price: "$8.9", originalPrice: "$12", icon: "pawprint.fill",
-stockLevel: .high, watchCount: 31, reportCount: 5, lastUpdated: "27 分鐘前",
-category: " ⽑孩", isHot: false, isLive: false),
-]
-let mockPublishRecords: [PublishRecord] = [
-PublishRecord(type: "情報", title: "旺⾓ 759 ⽇本朱古⼒奶現貨", date: "今⽇ 14:32",
-status: "已驗證 ✓", statusColor: .green),
-PublishRecord(type: "懸賞", title: "搵緊樂⾼ Icons 系列花束", date: "昨⽇ 09:15",
-status: "進⾏中", statusColor: .orange),
-PublishRecord(type: "情報", title: "銅鑼灣 SOGO SK-II 特價", date: "3 ⽇前",
-status: "已過期", statusColor: .gray),
-]
-// ─────────────────────────────────────────
-// MARK: - App Entry
-// ─────────────────────────────────────────
-struct ContentView: View {
-var body: some View {
-TabView {
-HomeFeedView()
-.tabItem {
-Image(systemName: "magnifyingglass.circle.fill")
-Text("尋寶雷達")
-}
-PublishChoiceView()
-.tabItem {
-Image(systemName: "plus.circle.fill")
-Text("發佈")
-}
-ProfileAndShopView()
-.tabItem {
-Image(systemName: "person.crop.circle.fill")
-Text("我的檔案")
-}
-}
-.accentColor(Color(red: 1, green: 0.6, blue: 0)) // Amazon orange
-.preferredColorScheme(.light) // Amazon is light!
-}
-}
-// ─────────────────────────────────────────
-// MARK: - Page 1: Home Feed
-// ─────────────────────────────────────────
-struct HomeFeedView: View {
-let categories = ["全部", " 飲食", " 美妝", " 玩具", " ⽑孩", " ⽣活"]
-@State private var selectedCategory = "全部"
-@State private var searchText = ""
-@State private var selectedProduct: Product? = nil
-let amazonOrange = Color(red: 1, green: 0.6, blue: 0)
-let amazonYellow = Color(red: 1, green: 0.87, blue: 0.2)
-var filtered: [Product] {
-mockProducts.filter { p in
-let catMatch = selectedCategory == "全部" || p.category == selectedCategory
-let searchMatch = searchText.isEmpty || p.name.localizedCaseInsensitiveContains(s
-return catMatch && searchMatch
-}
-}
-var body: some View {
-NavigationView {
-ZStack {
-Color(UIColor.systemGroupedBackground).edgesIgnoringSafeArea(.all)
-VStack(spacing: 0) {
-// ── Amazon-style header bar ──
-VStack(spacing: 10) {
-HStack {
-VStack(alignment: .leading, spacing: 1) {
-Text(" 送貨⾄：香港全區")
-.font(.caption2).foregroundColor(.white.opacity(0.85))
-Text("尋寶雷達").font(.title2).fontWeight(.heavy).foregroundCo
-}
-Spacer()
-// Live indicator
-HStack(spacing: 4) {
-Circle().fill(Color.red).frame(width: 8, height: 8)
-.overlay(Circle().stroke(Color.red.opacity(0.4), lineWidt
-Text("LIVE").font(.caption).fontWeight(.heavy).foregroundColo
-}
-.padding(.horizontal, 10).padding(.vertical, 5)
-.background(Color.white).cornerRadius(20)
-}
-// Search bar
-HStack {
-Image(systemName: "magnifyingglass").foregroundColor(.gray)
-TextField("搜尋產品、地點...", text: $searchText)
-if !searchText.isEmpty {
-Button(action: { searchText = "" }) {
-Image(systemName: "xmark.circle.fill").foregroundColor(.g
-}
-}
-}
-.padding(11)
-.background(Color.white)
-.cornerRadius(10)
-}
-)
-.padding(.horizontal, 16)
-.padding(.vertical, 12)
-.background(
-LinearGradient(colors: [Color(red: 0.18, green: 0.18, blue: 0.18), Co
-startPoint: .top, endPoint: .bottom)
-// ── Category pills ──
-ScrollView(.horizontal, showsIndicators: false) {
-HStack(spacing: 8) {
-ForEach(categories, id: \.self) { cat in
-Button(action: { selectedCategory = cat }) {
-Text(cat)
-.font(.subheadline).fontWeight(.semibold)
-.padding(.horizontal, 14).padding(.vertical, 7)
-.background(selectedCategory == cat ? amazonOrange :
-.foregroundColor(selectedCategory == cat ? .white : C
-.cornerRadius(20)
-.shadow(color: .black.opacity(0.08), radius: 3, x: 0,
-}
-}
-}
-.padding(.horizontal, 16).padding(.vertical, 10)
-}
-.background(Color(UIColor.systemGroupedBackground))
-// ── Results count + sort ──
-HStack {
-Text("\(filtered.count) 個情報")
-.font(.caption).foregroundColor(.secondary)
-Spacer()
-HStack(spacing: 4) {
-Image(systemName: "arrow.up.arrow.down")
-Text("最新優先")
-}
-.font(.caption).foregroundColor(amazonOrange)
-}
-.padding(.horizontal, 16).padding(.bottom, 4)
-// ── Feed ──
-ScrollView {
-LazyVStack(spacing: 12) {
-ForEach(filtered) { product in
-Button(action: { selectedProduct = product }) {
-ProductCard(product: product)
-}
-.buttonStyle(PlainButtonStyle())
-}
-}
-.padding(.horizontal, 16)
-.padding(.bottom, 24)
-}
-}
-}
-}
-.navigationBarHidden(true)
-.sheet(item: $selectedProduct) { p in
-ProductDetailView(product: p)
-}
-}
-}
-// ─────────────────────────────────────────
-// MARK: - Product Card (Amazon Psychology)
-// ─────────────────────────────────────────
-struct ProductCard: View {
-let product: Product
-let amazonOrange = Color(red: 1, green: 0.6, blue: 0)
-var body: some View {
-VStack(alignment: .leading, spacing: 0) {
-// Top row: badges
-HStack(spacing: 6) {
-if product.isHot {
-Label("⼤熱", systemImage: "flame.fill")
-.font(.caption2).fontWeight(.heavy)
-.padding(.horizontal, 7).padding(.vertical, 3)
-.background(Color.red).foregroundColor(.white).cornerRadius(4)
-}
-if product.isLive {
-HStack(spacing: 3) {
-Circle().fill(Color.red).frame(width: 5, height: 5)
-Text("LIVE 即時").font(.caption2).fontWeight(.heavy)
-}
-.padding(.horizontal, 7).padding(.vertical, 3)
-.background(Color.red.opacity(0.12)).foregroundColor(.red).cornerRadius(4
-}
-Spacer()
-// Last updated — freshness signal
-Text(" \(product.lastUpdated)")
-.font(.caption2).foregroundColor(.secondary)
-}
-.padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 8)
-HStack(alignment: .top, spacing: 12) {
-// Icon placeholder (replace with AsyncImage for real app)
-ZStack {
-RoundedRectangle(cornerRadius: 10)
-.fill(Color(UIColor.systemGray6))
-.frame(width: 80, height: 80)
-Image(systemName: product.icon)
-.font(.system(size: 36))
-.foregroundColor(amazonOrange)
-}
-VStack(alignment: .leading, spacing: 5) {
-Text(product.name)
-.font(.subheadline).fontWeight(.semibold)
-.foregroundColor(Color(UIColor.label))
-.lineLimit(2)
-// Price row
-HStack(alignment: .firstTextBaseline, spacing: 6) {
-Text(product.price)
-.font(.title3).fontWeight(.heavy)
-.foregroundColor(product.stockLevel == .sold ? .gray : Color(red:
-if let orig = product.originalPrice {
-Text(orig)
-.font(.caption)
-.strikethrough()
-.foregroundColor(.secondary)
-}
-}
-// Location
-Label(product.location, systemImage: "mappin.and.ellipse")
-.font(.caption).foregroundColor(.secondary)
-.lineLimit(1)
-// Social proof — "83 ⼈正在睇"
-if product.watchCount > 0 {
-Text(" \(product.watchCount) ⼈正在關注")
-.font(.caption2)
-.foregroundColor(product.watchCount > 100 ? .red : .secondary)
-}
-}
-}
-.padding(.horizontal, 14)
-// ── Stock Level Bar ──
-VStack(alignment: .leading, spacing: 4) {
-HStack {
-Image(systemName: product.stockLevel.icon)
-.foregroundColor(product.stockLevel.color)
-.font(.caption)
-Text(product.stockLevel.rawValue)
-.font(.caption).fontWeight(.bold)
-.foregroundColor(product.stockLevel.color)
-Spacer()
-Text("\(product.reportCount) 個⼈回報")
-.font(.caption2).foregroundColor(.secondary)
-}
-GeometryReader { geo in
-ZStack(alignment: .leading) {
-Capsule().fill(Color(UIColor.systemGray5)).frame(height: 6)
-Capsule()
-.fill(product.stockLevel.color)
-.frame(width: geo.size.width * product.stockLevel.barFraction, he
-}
-}
-.frame(height: 6)
-}
-.padding(.horizontal, 14).padding(.top, 10)
-// ── CTA Buttons ──
-HStack(spacing: 10) {
-Button(action: {}) {
-Label(" 𥄫住", systemImage: "")
-.font(.subheadline).fontWeight(.bold)
-.frame(maxWidth: .infinity).padding(.vertical, 10)
-.background(amazonOrange)
-.foregroundColor(.white)
-.cornerRadius(8)
-}
-Button(action: {}) {
-Text(" 更新庫存")
-.font(.subheadline).fontWeight(.bold)
-.frame(maxWidth: .infinity).padding(.vertical, 10)
-.background(Color(UIColor.systemGray6))
-.foregroundColor(Color(UIColor.label))
-.cornerRadius(8)
-}
-}
-.padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 14)
-}
-.background(Color.white)
-.cornerRadius(14)
-.shadow(color: .black.opacity(0.07), radius: 6, x: 0, y: 2)
-}
-}
-// ─────────────────────────────────────────
-// MARK: - Product Detail Sheet
-// ─────────────────────────────────────────
-struct ProductDetailView: View {
-let product: Product
-@Environment(\.dismiss) var dismiss
-@State private var stockCount: Int = 5 // user can update live
-let amazonOrange = Color(red: 1, green: 0.6, blue: 0)
-var body: some View {
-NavigationView {
-ScrollView {
-VStack(alignment: .leading, spacing: 20) {
-// Hero icon
-ZStack {
-RoundedRectangle(cornerRadius: 16)
-.fill(Color(UIColor.systemGray6))
-.frame(height: 200)
-Image(systemName: product.icon)
-.font(.system(size: 80))
-.foregroundColor(amazonOrange)
-}
-VStack(alignment: .leading, spacing: 8) {
-Text(product.name).font(.title2).fontWeight(.heavy)
-HStack(alignment: .firstTextBaseline, spacing: 8) {
-Text(product.price).font(.title).fontWeight(.heavy)
-.foregroundColor(Color(red: 0.7, green: 0, blue: 0))
-if let orig = product.originalPrice {
-Text(orig).font(.body).strikethrough().foregroundColor(.secon
-let saved = "慳到！"
-Text(saved).font(.caption).foregroundColor(.green).fontWeight
-}
-}
-Label(product.location, systemImage: "mappin.and.ellipse")
-.foregroundColor(.secondary)
-}
-.padding(.horizontal)
-// ── Live Stock Update ──
-VStack(alignment: .leading, spacing: 12) {
-HStack {
-Image(systemName: "gauge.with.dots.needle.67percent")
-.foregroundColor(amazonOrange)
-Text("即時貨量更新").font(.headline)
-Spacer()
-if product.isLive {
-HStack(spacing: 3) {
-Circle().fill(Color.red).frame(width: 6, height: 6)
-Text("LIVE").font(.caption).fontWeight(.heavy).foreground
-}
-}
-}
-HStack(spacing: 16) {
-Button(action: { if stockCount > 0 { stockCount -= 1 } }) {
-Image(systemName: "minus.circle.fill")
-.font(.system(size: 32)).foregroundColor(.red)
-}
-VStack {
-Text("\(stockCount)").font(.system(size: 40, weight: .heavy))
-Text("⽬測剩餘件數").font(.caption).foregroundColor(.secondary)
-}
-.frame(minWidth: 80)
-Button(action: { stockCount += 1 }) {
-Image(systemName: "plus.circle.fill")
-.font(.system(size: 32)).foregroundColor(.green)
-}
-}
-.frame(maxWidth: .infinity)
-.padding()
-.background(Color(UIColor.systemGray6))
-.cornerRadius(12)
-Button(action: {}) {
-Label("提交最新庫存", systemImage: "arrow.up.circle.fill")
-.font(.subheadline).fontWeight(.bold)
-.frame(maxWidth: .infinity).padding(.vertical, 12)
-.background(amazonOrange).foregroundColor(.white)
-.cornerRadius(10)
-}
-}
-.padding(.horizontal)
-// ── Social proof ──
-VStack(alignment: .leading, spacing: 8) {
-Text("情報可信度").font(.headline).padding(.horizontal)
-HStack(spacing: 20) {
-StatBadge(value: "\(product.watchCount)", label: "⼈關注", icon: "
-StatBadge(value: "\(product.reportCount)", label: "⼈回報", icon:
-StatBadge(value: product.lastUpdated, label: "最後更新", icon: "cl
-.padding(.horizontal)
-}
-}
-Spacer(minLength: 40)
-}
-.padding(.top)
-}
-.navigationBarTitleDisplayMode(.inline)
-.toolbar {
-ToolbarItem(placement: .navigationBarTrailing) {
-Button("完成") { dismiss() }
-.fontWeight(.bold).foregroundColor(amazonOrange)
-}
-}
-}
-}
-}
-struct StatBadge: View {
-let value: String
-let label: String
-let icon: String
-let color: Color
-var body: some View {
-VStack(spacing: 4) {
-Image(systemName: icon).font(.title3).foregroundColor(color)
-Text(value).font(.subheadline).fontWeight(.heavy)
-Text(label).font(.caption2).foregroundColor(.secondary)
-}
-.frame(maxWidth: .infinity)
-.padding(.vertical, 12)
-.background(color.opacity(0.08))
-.cornerRadius(10)
-}
-}
-// ─────────────────────────────────────────
-// MARK: - Page 2: Publish
-// ─────────────────────────────────────────
-struct PublishChoiceView: View {
-@State private var showWantedForm = false
-@State private var showReportForm = false
-let amazonOrange = Color(red: 1, green: 0.6, blue: 0)
-var body: some View {
-NavigationView {
-ZStack {
-Color(UIColor.systemGroupedBackground).edgesIgnoringSafeArea(.all)
-VStack(spacing: 24) {
-VStack(spacing: 6) {
-Text("發佈情報").font(.largeTitle).fontWeight(.heavy)
-Text("選擇你要做嘅嘢").font(.subheadline).foregroundColor(.secondary)
-}
-.padding(.top, 40)
-// Wanted card
-Button(action: { showWantedForm = true }) {
-PublishOptionCard(
-icon: "megaphone.fill",
-title: " 發佈懸賞",
-subtitle: "我想搵某樣嘢，請⼤家幫⼿",
-tag: "最多⼈⽤",
-tagColor: .blue,
-bgColor: Color.blue.opacity(0.07),
-iconColor: .blue
-)
-}
-.sheet(isPresented: $showWantedForm) { WantedFormView() }
-// Report card
-Button(action: { showReportForm = true }) {
-PublishOptionCard(
-icon: "camera.viewfinder",
-title: " 回報現貨",
-subtitle: "我⾒到貨，分享俾有需要嘅⼈",
-tag: "賺⾦幣",
-tagColor: .orange,
-bgColor: Color.orange.opacity(0.07),
-iconColor: amazonOrange
-)
-}
-.sheet(isPresented: $showReportForm) { ReportFormView() }
-// Tip box — Amazon-style urgency
-HStack(alignment: .top, spacing: 10) {
-Image(systemName: "lightbulb.fill").foregroundColor(amazonOrange)
-Text("每次成功回報可獲 **+10 ⾦幣**，換取平台獨家折扣！")
-.font(.footnote).foregroundColor(.secondary)
-}
-.padding(14)
-.background(Color(red: 1, green: 0.87, blue: 0.2).opacity(0.25))
-.cornerRadius(10)
-.padding(.horizontal)
-Spacer()
-}
-.padding(24)
-}
-.navigationBarHidden(true)
-}
-}
-}
-struct PublishOptionCard: View {
-let icon: String
-let title: String
-let subtitle: String
-let tag: String
-let tagColor: Color
-let bgColor: Color
-let iconColor: Color
-var body: some View {
-HStack(spacing: 16) {
-ZStack {
-Circle().fill(iconColor.opacity(0.15)).frame(width: 60, height: 60)
-Image(systemName: icon).font(.system(size: 26)).foregroundColor(iconColor)
-}
-VStack(alignment: .leading, spacing: 4) {
-HStack {
-Text(title).font(.headline).foregroundColor(Color(UIColor.label))
-Text(tag).font(.caption2).fontWeight(.bold)
-.padding(.horizontal, 7).padding(.vertical, 3)
-.background(tagColor.opacity(0.15)).foregroundColor(tagColor).cornerR
-}
-Text(subtitle).font(.subheadline).foregroundColor(.secondary).lineLimit(2)
-}
-Spacer()
-Image(systemName: "chevron.right").foregroundColor(.secondary)
-}
-.padding(18)
-.background(bgColor)
-.background(Color.white)
-.cornerRadius(16)
-.shadow(color: .black.opacity(0.06), radius: 5, x: 0, y: 2)
-}
-}
-// ─────────────────────────────────────────
-// MARK: - Publish Forms
-// ─────────────────────────────────────────
-struct WantedFormView: View {
-@Environment(\.dismiss) var dismiss
-@State private var productName = ""
-@State private var preferredLocation = ""
-@State private var maxPrice = ""
-@State private var notes = ""
-let amazonOrange = Color(red: 1, green: 0.6, blue: 0)
-var body: some View {
-NavigationView {
-Form {
-Section(header: Text("產品詳情")) {
-TextField("產品名稱（例：⼭葡萄熊軟糖）", text: $productName)
-TextField("希望搵到嘅地區（例：旺⾓、銅鑼灣）", text: $preferredLocation)
-TextField("願意出嘅最⾼價錢", text: $maxPrice)
-.keyboardType(.decimalPad)
-}
-Section(header: Text("備註")) {
-TextField("其他要求...（例：需要正版、⽇本版）", text: $notes)
-}
-Section {
-Button(action: { dismiss() }) {
-Text(" 發佈懸賞")
-.font(.headline).fontWeight(.bold)
-.frame(maxWidth: .infinity)
-.foregroundColor(.white)
-}
-.listRowBackground(amazonOrange)
-}
-}
-.navigationTitle("發佈懸賞")
-.navigationBarTitleDisplayMode(.inline)
-.toolbar {
-ToolbarItem(placement: .navigationBarLeading) {
-Button("取消") { dismiss() }
-}
-}
-}
-}
-}
-struct ReportFormView: View {
-@Environment(\.dismiss) var dismiss
-@State private var productName = ""
-@State private var location = ""
-@State private var price = ""
-@State private var stockAmount = 5
-@State private var notes = ""
-let amazonOrange = Color(red: 1, green: 0.6, blue: 0)
-var body: some View {
-NavigationView {
-Form {
-Section(header: Text("產品資料")) {
-TextField("產品名稱", text: $productName)
-TextField("商店 / 位置（越詳細越好）", text: $location)
-TextField("售價（例：$12.5）", text: $price)
-.keyboardType(.decimalPad)
-Section(header: Text("即時貨量")) {
-Stepper("⽬測剩餘：\(stockAmount) 件", value: $stockAmount, in: 0...999)
-}
-}
-Section(header: Text("備註")) {
-TextField("例：限購 2 件、需會員卡", text: $notes)
-}
-Section {
-Button(action: { dismiss() }) {
-Text(" 提交情報（+10 ）")
-.font(.headline).fontWeight(.bold)
-.frame(maxWidth: .infinity)
-.foregroundColor(.white)
-}
-.listRowBackground(amazonOrange)
-}
-}
-.navigationTitle("回報現貨")
-.navigationBarTitleDisplayMode(.inline)
-.toolbar {
-ToolbarItem(placement: .navigationBarLeading) {
-Button("取消") { dismiss() }
-}
-}
-}
-}
-}
-// ─────────────────────────────────────────
-// MARK: - Page 3: Profile
-// ─────────────────────────────────────────
-struct ProfileAndShopView: View {
-let amazonOrange = Color(red: 1, green: 0.6, blue: 0)
-let amazonYellow = Color(red: 1, green: 0.87, blue: 0.2)
-var body: some View {
-NavigationView {
-ScrollView {
-VStack(spacing: 0) {
-// ── Profile header ──
-ZStack(alignment: .bottomLeading) {
-LinearGradient(colors: [Color(red: 0.18, green: 0.18, blue: 0.18), Co
-startPoint: .top, endPoint: .bottom)
-.frame(height: 160)
-HStack(alignment: .bottom, spacing: 14) {
-ZStack {
-Circle().fill(amazonOrange).frame(width: 72, height: 72)
-Text("俊").font(.system(size: 32, weight: .heavy)).foreground
-}
-VStack(alignment: .leading, spacing: 3) {
-Text("Partner 俊煒").font(.title2).fontWeight(.heavy).foregrou
-Text(" ⾸席排雷兵 · Lv.7").font(.subheadline).foregroundColor
-}
-Spacer()
-}
-.padding(.horizontal, 20)
-.padding(.bottom, 16)
-}
-// ── Coin balance ──
-HStack(spacing: 16) {
-VStack(spacing: 2) {
-Text("1,250 ").font(.title3).fontWeight(.heavy).foregroundColor
-Text("⾦幣餘額").font(.caption).foregroundColor(.secondary)
-}
-Divider().frame(height: 36)
-VStack(spacing: 2) {
-Text("23").font(.title3).fontWeight(.heavy)
-Text("情報發佈").font(.caption).foregroundColor(.secondary)
-}
-Divider().frame(height: 36)
-VStack(spacing: 2) {
-Text("98%").font(.title3).fontWeight(.heavy).foregroundColor(.gre
-Text("可信度").font(.caption).foregroundColor(.secondary)
-}
-}
-.frame(maxWidth: .infinity)
-.padding(.vertical, 16)
-.background(Color.white)
-.shadow(color: .black.opacity(0.05), radius: 4, y: 2)
-// ── Publish history ──
-VStack(alignment: .leading, spacing: 0) {
-Text("我的發佈記錄")
-.font(.headline)
-.padding(.horizontal, 16)
-.padding(.top, 20)
-.padding(.bottom, 10)
-ForEach(mockPublishRecords) { record in
-PublishRecordRow(record: record)
-if record.id != mockPublishRecords.last?.id {
-Divider().padding(.leading, 60)
-}
-}
-}
-.background(Color.white)
-.cornerRadius(14)
-.shadow(color: .black.opacity(0.06), radius: 5, x: 0, y: 2)
-.padding(.horizontal, 16)
-.padding(.top, 20)
-Spacer(minLength: 40)
-}
-}
-.background(Color(UIColor.systemGroupedBackground))
-.navigationBarHidden(true)
-}
-}
-}
-struct PublishRecordRow: View {
-let record: PublishRecord
-let amazonOrange = Color(red: 1, green: 0.6, blue: 0)
-var body: some View {
-HStack(spacing: 14) {
-ZStack {
-RoundedRectangle(cornerRadius: 8)
-.fill(record.type == "懸賞" ? Color.blue.opacity(0.12) : amazonOrange.opac
-.frame(width: 40, height: 40)
-Image(systemName: record.type == "懸賞" ? "megaphone.fill" : "camera.fill")
-.foregroundColor(record.type == "懸賞" ? .blue : amazonOrange)
-VStack(alignment: .leading, spacing: 3) {
-Text(record.title).font(.subheadline).fontWeight(.semibold).lineLimit(1)
-Text(record.date).font(.caption).foregroundColor(.secondary)
-}
-}
-Spacer()
-Text(record.status)
-.font(.caption).fontWeight(.bold)
-.foregroundColor(record.statusColor)
-.padding(.horizontal, 8).padding(.vertical, 4)
-.background(record.statusColor.opacity(0.1))
-.cornerRadius(6)
-}
-.padding(.horizontal, 16)
-.padding(.vertical, 12)
-}
-}
+<!DOCTYPE html>
+
+<html lang="zh-HK">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="theme-color" content="#ffffff">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="防伏裝修">
+<meta name="description" content="香港裝修公司評價平台 — 真實評分、AI報價單掃描、黑名單查詢">
+<title>防伏裝修</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+HK:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+
+:root {
+–white: #ffffff;
+–bg: #f5f5f5;
+–border: #e8e8e8;
+–text: #111111;
+–text2: #666666;
+–text3: #999999;
+–green: #16a34a;
+–green-bg: #f0fdf4;
+–red: #dc2626;
+–red-bg: #fef2f2;
+–orange: #ea580c;
+–orange-bg: #fff7ed;
+–shadow: 0 1px 8px rgba(0,0,0,0.08);
+}
+
+body {
+font-family: ‘Noto Sans HK’, sans-serif;
+background: var(–bg);
+color: var(–text);
+min-height: 100vh;
+overflow-x: hidden;
+}
+
+/* ── 底部導航 ── */
+.nav {
+position: fixed; bottom: 0; left: 0; right: 0;
+background: var(–white);
+border-top: 1px solid var(–border);
+display: flex;
+padding-bottom: env(safe-area-inset-bottom);
+z-index: 100;
+}
+.nav-btn {
+flex: 1; display: flex; flex-direction: column;
+align-items: center; gap: 3px; padding: 10px 0;
+border: none; background: none; cursor: pointer;
+color: var(–text3); font-family: inherit;
+font-size: 10px; font-weight: 600;
+}
+.nav-btn.active { color: var(–orange); }
+.nav-btn svg { width: 20px; height: 20px; }
+
+/* ── 頁面 ── */
+.page { display: none; padding-bottom: 80px; min-height: 100vh; }
+.page.active { display: block; animation: up .2s ease; }
+@keyframes up { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+
+/* ── 頂部 ── */
+.top {
+background: var(–white);
+border-bottom: 1px solid var(–border);
+padding: 16px 16px 12px;
+position: sticky; top: 0; z-index: 50;
+}
+.top-title { font-size: 22px; font-weight: 900; margin-bottom: 10px; }
+.top-sub { font-size: 12px; color: var(–text3); margin-top: 2px; font-weight: 400; }
+
+/* ── 搜尋欄 ── */
+.search {
+display: flex; align-items: center; gap: 8px;
+background: var(–bg); border: 1px solid var(–border);
+border-radius: 10px; padding: 10px 12px;
+}
+.search svg { width: 16px; height: 16px; color: var(–text3); flex-shrink: 0; }
+.search input {
+border: none; outline: none; background: none;
+font-family: inherit; font-size: 14px; color: var(–text); flex: 1;
+}
+.search input::placeholder { color: var(–text3); }
+
+/* ── 分類 ── */
+.cats {
+display: flex; gap: 6px; padding: 10px 16px;
+overflow-x: auto; scrollbar-width: none;
+background: var(–white); border-bottom: 1px solid var(–border);
+}
+.cats::-webkit-scrollbar { display: none; }
+.cat {
+flex-shrink: 0; padding: 6px 12px; border-radius: 20px;
+border: 1px solid var(–border); background: var(–white);
+font-family: inherit; font-size: 13px; font-weight: 600;
+color: var(–text2); cursor: pointer; white-space: nowrap;
+}
+.cat.active {
+background: var(–text); color: var(–white); border-color: var(–text);
+}
+
+/* ── 公司卡片 ── */
+.cards { padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
+.card {
+background: var(–white); border-radius: 12px;
+border: 1px solid var(–border);
+overflow: hidden; cursor: pointer;
+transition: box-shadow .15s;
+}
+.card:active { box-shadow: var(–shadow); }
+.card.is-bad { border-color: #fca5a5; border-left: 4px solid var(–red); }
+.card.is-good { border-left: 4px solid var(–green); }
+.card.is-warn { border-left: 4px solid var(–orange); }
+
+.card-inner { display: flex; align-items: center; gap: 12px; padding: 14px; }
+
+.score-box {
+width: 48px; height: 48px; border-radius: 10px;
+display: flex; flex-direction: column; align-items: center;
+justify-content: center; flex-shrink: 0;
+}
+.score-box.good { background: var(–green-bg); }
+.score-box.warn { background: var(–orange-bg); }
+.score-box.bad  { background: var(–red-bg); }
+.score-num { font-size: 18px; font-weight: 900; line-height: 1; }
+.score-num.good { color: var(–green); }
+.score-num.warn { color: var(–orange); }
+.score-num.bad  { color: var(–red); }
+.score-star { font-size: 9px; margin-top: 1px; }
+.score-star.good { color: var(–green); }
+.score-star.warn { color: var(–orange); }
+.score-star.bad  { color: var(–red); }
+
+.card-info { flex: 1; min-width: 0; }
+.card-name { font-size: 15px; font-weight: 700; margin-bottom: 2px; }
+.card-meta { font-size: 12px; color: var(–text3); margin-bottom: 6px; }
+.card-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.ctag {
+font-size: 11px; padding: 2px 7px; border-radius: 4px; font-weight: 600;
+}
+.ctag.good { background: var(–green-bg); color: var(–green); }
+.ctag.bad  { background: var(–red-bg); color: var(–red); }
+.ctag.neutral { background: var(–bg); color: var(–text2); }
+
+.card-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.status-pill { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 20px; white-space: nowrap; }
+.status-pill.good { background: var(–green-bg); color: var(–green); }
+.status-pill.warn { background: var(–orange-bg); color: var(–orange); }
+.status-pill.bad  { background: var(–red-bg); color: var(–red); }
+.card-reviews { font-size: 11px; color: var(–text3); }
+
+/* ── Modal ── */
+.overlay {
+display: none; position: fixed; inset: 0;
+background: rgba(0,0,0,0.4); z-index: 200; align-items: flex-end;
+}
+.overlay.open { display: flex; animation: fadeIn .2s ease; }
+@keyframes fadeIn { from{opacity:0} to{opacity:1} }
+.modal {
+background: var(–white); border-radius: 20px 20px 0 0;
+width: 100%; max-height: 88vh; overflow-y: auto;
+animation: slideUp .25s ease;
+padding-bottom: env(safe-area-inset-bottom);
+}
+@keyframes slideUp { from{transform:translateY(100%)} to{transform:translateY(0)} }
+
+.modal-handle { width: 36px; height: 4px; background: var(–border); border-radius: 2px; margin: 12px auto 0; }
+.modal-head { padding: 16px 20px; border-bottom: 1px solid var(–border); }
+.modal-status { font-size: 12px; font-weight: 700; margin-bottom: 6px; }
+.modal-status.good { color: var(–green); }
+.modal-status.warn { color: var(–orange); }
+.modal-status.bad  { color: var(–red); }
+.modal-name { font-size: 22px; font-weight: 900; margin-bottom: 2px; }
+.modal-sub { font-size: 13px; color: var(–text2); }
+
+.modal-stats { display: flex; border-bottom: 1px solid var(–border); }
+.mstat { flex: 1; text-align: center; padding: 14px 0; }
+.mstat + .mstat { border-left: 1px solid var(–border); }
+.mstat-val { font-size: 20px; font-weight: 900; }
+.mstat-label { font-size: 11px; color: var(–text3); margin-top: 2px; }
+
+.modal-body { padding: 16px 20px; }
+.modal-section { font-size: 13px; font-weight: 700; color: var(–text3); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+.modal-desc { font-size: 14px; color: var(–text2); line-height: 1.7; margin-bottom: 20px; }
+
+.review {
+background: var(–bg); border-radius: 10px;
+padding: 12px; margin-bottom: 8px;
+}
+.review-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.review-stars { color: #f59e0b; font-size: 13px; letter-spacing: 1px; }
+.review-author { font-size: 12px; color: var(–text3); }
+.review-verified { font-size: 11px; color: var(–green); font-weight: 600; }
+.review-text { font-size: 14px; line-height: 1.6; color: var(–text); }
+.review-date { font-size: 11px; color: var(–text3); margin-top: 4px; }
+
+/* ── 掃描頁 ── */
+.scan-wrap { padding: 16px; }
+.page-h1 { font-size: 22px; font-weight: 900; margin-bottom: 4px; }
+.page-h2 { font-size: 13px; color: var(–text2); margin-bottom: 16px; }
+
+.scan-box {
+background: var(–white); border: 1px solid var(–border);
+border-radius: 12px; padding: 16px; margin-bottom: 12px;
+}
+.scan-ta {
+width: 100%; min-height: 160px; border: 1px solid var(–border);
+border-radius: 10px; padding: 12px; font-family: inherit;
+font-size: 14px; color: var(–text); resize: none; outline: none;
+transition: border-color .2s; line-height: 1.6;
+}
+.scan-ta:focus { border-color: var(–text); }
+.scan-btns { display: flex; gap: 8px; margin-top: 10px; }
+.btn-ghost {
+flex: 1; padding: 12px; border: 1px solid var(–border);
+border-radius: 10px; background: none; font-family: inherit;
+font-size: 13px; font-weight: 700; color: var(–text2); cursor: pointer;
+}
+.btn-cta {
+flex: 2; padding: 12px; border: none; border-radius: 10px;
+background: var(–orange); color: var(–white);
+font-family: inherit; font-size: 14px; font-weight: 800;
+cursor: pointer; display: flex; align-items: center;
+justify-content: center; gap: 6px; transition: opacity .2s;
+}
+.btn-cta:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* 風險卡 */
+.risk-card {
+background: var(–white); border: 1px solid var(–border);
+border-radius: 12px; padding: 16px; margin-bottom: 10px;
+}
+.risk-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.risk-title { font-size: 15px; font-weight: 700; }
+.risk-pill { font-size: 12px; font-weight: 800; padding: 5px 14px; border-radius: 20px; }
+.risk-pill.high { background: var(–red-bg); color: var(–red); }
+.risk-pill.mid  { background: var(–orange-bg); color: var(–orange); }
+.risk-pill.low  { background: var(–green-bg); color: var(–green); }
+.risk-row { display: flex; justify-content: space-between; font-size: 12px; color: var(–text2); margin-bottom: 6px; }
+.risk-row span:last-child { font-weight: 700; color: var(–red); }
+.bar-bg { height: 8px; background: var(–bg); border-radius: 4px; overflow: hidden; border: 1px solid var(–border); }
+.bar-fill { height: 100%; border-radius: 4px; transition: width 1s ease; }
+
+/* 陷阱卡 */
+.traps-wrap { margin-bottom: 16px; }
+.traps-title { font-size: 15px; font-weight: 700; margin-bottom: 10px; }
+.trap {
+background: var(–white); border: 1px solid var(–border);
+border-radius: 10px; padding: 14px; margin-bottom: 8px;
+}
+.trap.high { border-left: 3px solid var(–red); }
+.trap.mid  { border-left: 3px solid var(–orange); }
+.trap.low  { border-left: 3px solid #eab308; }
+.trap-top { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
+.trap-badge { font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 4px; }
+.trap-badge.high { background: var(–red-bg); color: var(–red); }
+.trap-badge.mid  { background: var(–orange-bg); color: var(–orange); }
+.trap-badge.low  { background: #fefce8; color: #a16207; }
+.trap-name { font-size: 14px; font-weight: 700; }
+.trap-detail { font-size: 13px; color: var(–text2); line-height: 1.6; margin-bottom: 8px; }
+.trap-tip {
+display: flex; gap: 6px; background: var(–orange-bg);
+border-radius: 8px; padding: 8px 10px;
+}
+.trap-tip-text { font-size: 12px; color: var(–orange); font-weight: 600; line-height: 1.5; }
+.disclaimer { text-align: center; font-size: 11px; color: var(–text3); padding: 12px 0 4px; }
+
+/* ── 投稿頁 ── */
+.form-wrap { padding: 16px; }
+.form-card {
+background: var(–white); border: 1px solid var(–border);
+border-radius: 12px; overflow: hidden; margin-bottom: 10px;
+}
+.form-card-title {
+font-size: 11px; font-weight: 700; color: var(–text3);
+padding: 12px 16px 0; text-transform: uppercase; letter-spacing: 0.5px;
+}
+.seg { display: flex; margin: 10px 16px 12px; background: var(–bg); border-radius: 8px; padding: 2px; }
+.seg-btn {
+flex: 1; padding: 8px; border: none; background: none;
+font-family: inherit; font-size: 13px; font-weight: 700;
+cursor: pointer; border-radius: 6px; color: var(–text2); transition: all .2s;
+}
+.seg-btn.active { background: var(–white); color: var(–text); box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+.frow { padding: 12px 16px; border-top: 1px solid var(–border); }
+.flabel { font-size: 12px; font-weight: 700; color: var(–text2); margin-bottom: 6px; }
+.finput {
+width: 100%; border: 1px solid var(–border); border-radius: 8px;
+padding: 10px 12px; font-family: inherit; font-size: 14px;
+color: var(–text); outline: none; transition: border-color .2s;
+}
+.finput:focus { border-color: var(–text); }
+.fta {
+width: 100%; border: 1px solid var(–border); border-radius: 8px;
+padding: 10px 12px; font-family: inherit; font-size: 14px;
+color: var(–text); outline: none; resize: none; min-height: 100px;
+transition: border-color .2s; line-height: 1.6;
+}
+.fta:focus { border-color: var(–text); }
+.star-row { display: flex; gap: 8px; }
+.sstar { font-size: 26px; background: none; border: none; cursor: pointer; }
+.fnote {
+display: flex; gap: 8px; padding: 10px 16px;
+font-size: 12px; color: var(–text3); line-height: 1.5;
+}
+.btn-submit {
+width: 100%; padding: 14px; border: none; border-radius: 10px;
+font-family: inherit; font-size: 15px; font-weight: 800;
+color: var(–white); cursor: pointer; margin: 0 16px 16px;
+width: calc(100% - 32px);
+}
+.btn-submit.praise { background: var(–green); }
+.btn-submit.complaint { background: var(–orange); }
+
+/* ── 個人頁 ── */
+.profile-head {
+background: var(–white); border-bottom: 1px solid var(–border);
+padding: 24px 20px 20px;
+}
+.avatar {
+width: 64px; height: 64px; border-radius: 16px;
+background: var(–bg); border: 1px solid var(–border);
+display: flex; align-items: center; justify-content: center;
+font-size: 26px; font-weight: 900; margin-bottom: 10px;
+}
+.profile-name { font-size: 20px; font-weight: 900; }
+.profile-role { font-size: 13px; color: var(–text2); margin-top: 2px; }
+.pstats { display: flex; background: var(–white); border-bottom: 1px solid var(–border); }
+.pstat { flex: 1; text-align: center; padding: 14px 0; }
+.pstat + .pstat { border-left: 1px solid var(–border); }
+.pstat-val { font-size: 20px; font-weight: 900; }
+.pstat-label { font-size: 11px; color: var(–text3); margin-top: 2px; }
+
+.records { padding: 16px; }
+.rec-title { font-size: 15px; font-weight: 700; margin-bottom: 10px; }
+.rec {
+display: flex; align-items: center; gap: 12px;
+background: var(–white); border: 1px solid var(–border);
+border-radius: 10px; padding: 12px 14px; margin-bottom: 8px;
+}
+.rec-icon {
+width: 38px; height: 38px; border-radius: 8px;
+display: flex; align-items: center; justify-content: center;
+font-size: 16px; flex-shrink: 0;
+}
+.rec-icon.c { background: var(–red-bg); }
+.rec-icon.p { background: var(–green-bg); }
+.rec-info { flex: 1; min-width: 0; }
+.rec-name { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rec-type { font-size: 11px; color: var(–text3); margin-top: 1px; }
+.rec-status { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 6px; flex-shrink: 0; }
+.rec-status.ok   { background: var(–green-bg); color: var(–green); }
+.rec-status.pend { background: var(–orange-bg); color: var(–orange); }
+.rec-status.need { background: var(–red-bg); color: var(–red); }
+
+.settings { padding: 0 16px 20px; }
+.setting {
+display: flex; align-items: center; gap: 12px;
+background: var(–white); border: 1px solid var(–border);
+border-radius: 10px; padding: 14px; margin-bottom: 8px; cursor: pointer;
+}
+.sicon { font-size: 18px; width: 32px; text-align: center; }
+.slabel { flex: 1; font-size: 14px; font-weight: 500; }
+.schev { color: var(–text3); font-size: 16px; }
+
+/* ── Toast ── */
+.toast {
+position: fixed; bottom: 90px; left: 50%;
+transform: translateX(-50%) translateY(10px);
+background: var(–text); color: var(–white);
+padding: 10px 20px; border-radius: 20px;
+font-size: 13px; font-weight: 600; opacity: 0;
+transition: all .3s; pointer-events: none; z-index: 300;
+white-space: nowrap;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* spinner */
+.spin { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spinning .7s linear infinite; }
+@keyframes spinning { to{transform:rotate(360deg)} }
+</style>
+
+</head>
+<body>
+
+<!-- ══ 搜尋頁 ══ -->
+
+<div class="page active" id="page-search">
+  <div class="top">
+    <div class="top-title">防伏裝修 <span style="font-size:14px;font-weight:400;color:var(--text3)">香港裝修評價平台</span></div>
+    <div class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input id="search-input" type="text" placeholder="搜尋公司名、地區..." oninput="render()">
+    </div>
+  </div>
+
+  <div class="cats">
+    <button class="cat active" onclick="setCat('全部',this)">全部</button>
+    <button class="cat" onclick="setCat('全屋裝修',this)">全屋裝修</button>
+    <button class="cat" onclick="setCat('冷氣維修',this)">冷氣維修</button>
+    <button class="cat" onclick="setCat('換鎖開鎖',this)">換鎖開鎖</button>
+    <button class="cat" onclick="setCat('油漆工程',this)">油漆工程</button>
+    <button class="cat" onclick="setCat('水電工程',this)">水電工程</button>
+  </div>
+
+  <div class="cards" id="company-list"></div>
+</div>
+
+<!-- ══ 掃描頁 ══ -->
+
+<div class="page" id="page-scan">
+  <div class="scan-wrap">
+    <div class="page-h1">🔍 報價單掃描</div>
+    <div class="page-h2">貼入報價單文字，即時找出陷阱位</div>
+
+```
+<div class="scan-box">
+  <textarea class="scan-ta" id="scan-ta" placeholder="貼上報價單內容...&#10;&#10;例如：&#10;1. 泥水工程  $25,000&#10;2. 水電工程  $15,000&#10;付款：簽約70%..."></textarea>
+  <div class="scan-btns">
+    <button class="btn-ghost" onclick="loadSample()">📋 示範</button>
+    <button class="btn-cta" id="scan-btn" onclick="doScan()" disabled>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      即時掃描
+    </button>
+  </div>
+</div>
+
+<div id="scan-result" style="display:none">
+  <div class="risk-card">
+    <div class="risk-top">
+      <div class="risk-title">風險評估</div>
+      <div class="risk-pill high">高風險</div>
+    </div>
+    <div class="risk-row"><span>風險指數</span><span>72 / 100</span></div>
+    <div class="bar-bg">
+      <div class="bar-fill" id="bar" style="width:0%;background:var(--red)"></div>
+    </div>
+  </div>
+
+  <div class="traps-wrap">
+    <div class="traps-title">⚠️ 發現 5 個問題</div>
+    <div id="trap-list"></div>
+    <div class="disclaimer">AI 分析僅供參考，建議配合專業人士意見</div>
+  </div>
+</div>
+```
+
+  </div>
+</div>
+
+<!-- ══ 投稿頁 ══ -->
+
+<div class="page" id="page-report">
+  <div class="form-wrap">
+    <div class="page-h1">📢 投訴 / 好評</div>
+    <div class="page-h2" style="margin-bottom:16px">分享真實經歷，幫助其他業主</div>
+
+```
+<div class="form-card">
+  <div class="form-card-title">投稿類型</div>
+  <div class="seg">
+    <button class="seg-btn active" id="t0" onclick="setType(0)">👍 好評</button>
+    <button class="seg-btn" id="t1" onclick="setType(1)">⚠️ 投訴</button>
+  </div>
+</div>
+
+<div class="form-card">
+  <div class="form-card-title">公司資料</div>
+  <div class="frow">
+    <div class="flabel">公司名稱</div>
+    <input class="finput" id="cname" type="text" placeholder="例：靚居裝修工程">
+  </div>
+  <div class="frow">
+    <div class="flabel">評分</div>
+    <div class="star-row" id="stars">
+      <button class="sstar" onclick="setRating(1)">⭐</button>
+      <button class="sstar" onclick="setRating(2)">⭐</button>
+      <button class="sstar" onclick="setRating(3)">⭐</button>
+      <button class="sstar" onclick="setRating(4)">☆</button>
+      <button class="sstar" onclick="setRating(5)">☆</button>
+    </div>
+  </div>
+</div>
+
+<div class="form-card">
+  <div class="form-card-title">內容</div>
+  <div class="frow">
+    <textarea class="fta" id="fcontent" placeholder="描述你的經歷，越詳細越有參考價值..."></textarea>
+  </div>
+  <div class="fnote">ℹ️ 所有投稿均經人工審核，確認後才公開顯示。附上單據可加快審核。</div>
+  <button class="btn-submit praise" id="submit-btn" onclick="doSubmit()">✅ 提交好評</button>
+</div>
+```
+
+  </div>
+</div>
+
+<!-- ══ 個人頁 ══ -->
+
+<div class="page" id="page-profile">
+  <div class="profile-head">
+    <div class="avatar">用</div>
+    <div class="profile-name">匿名用戶</div>
+    <div class="profile-role">🛡 防伏守護者</div>
+  </div>
+  <div class="pstats">
+    <div class="pstat">
+      <div class="pstat-val" style="color:var(--orange)">3</div>
+      <div class="pstat-label">投稿數</div>
+    </div>
+    <div class="pstat">
+      <div class="pstat-val" style="color:var(--green)">2</div>
+      <div class="pstat-label">已審核</div>
+    </div>
+    <div class="pstat">
+      <div class="pstat-val" style="color:#2563eb">98%</div>
+      <div class="pstat-label">可信度</div>
+    </div>
+  </div>
+  <div class="records">
+    <div class="rec-title">我的投稿記錄</div>
+    <div class="rec">
+      <div class="rec-icon c">📢</div>
+      <div class="rec-info"><div class="rec-name">快靚平裝修投訴</div><div class="rec-type">投訴</div></div>
+      <div class="rec-status ok">已審核 ✓</div>
+    </div>
+    <div class="rec">
+      <div class="rec-icon p">👍</div>
+      <div class="rec-info"><div class="rec-name">精工冷氣好評</div><div class="rec-type">好評</div></div>
+      <div class="rec-status pend">審核中</div>
+    </div>
+    <div class="rec">
+      <div class="rec-icon c">📢</div>
+      <div class="rec-info"><div class="rec-name">速達鎖匙投訴</div><div class="rec-type">投訴</div></div>
+      <div class="rec-status need">待補充資料</div>
+    </div>
+  </div>
+  <div class="settings">
+    <div class="setting"><span class="sicon">🔔</span><span class="slabel">通知設定</span><span class="schev">›</span></div>
+    <div class="setting"><span class="sicon">🔒</span><span class="slabel">私隱政策</span><span class="schev">›</span></div>
+    <div class="setting"><span class="sicon">ℹ️</span><span class="slabel">關於防伏裝修</span><span class="schev">›</span></div>
+  </div>
+</div>
+
+<!-- 底部導航 -->
+
+<nav class="nav">
+  <button class="nav-btn active" onclick="showPage('search',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>搜尋
+  </button>
+  <button class="nav-btn" onclick="showPage('scan',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>掃報價單
+  </button>
+  <button class="nav-btn" onclick="showPage('report',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l19-9-9 19-2-8-8-2z"/></svg>投訴/好評
+  </button>
+  <button class="nav-btn" onclick="showPage('profile',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>我的
+  </button>
+</nav>
+
+<!-- Modal -->
+
+<div class="overlay" id="overlay" onclick="closeModal(event)">
+  <div class="modal" id="modal"></div>
+</div>
+
+<!-- Toast -->
+
+<div class="toast" id="toast"></div>
+
+<script>
+const companies = [
+  { id:1, name:'靚居裝修工程', cat:'全屋裝修', district:'旺角', rating:4.8, reviews:127, status:'good',
+    tags:[{t:'準時交樓',c:'good'},{t:'報價清晰',c:'good'},{t:'有保養',c:'good'}],
+    desc:'專業全屋裝修，10年經驗，有公司註冊，提供書面保養。',
+    reports:[
+      {author:'陳太',date:'2025年3月',rating:5,verified:true,text:'師傅好有禮貌，工程準時完成，報價單清清楚楚，冇任何追加費用！'},
+      {author:'王生',date:'2025年1月',rating:5,verified:true,text:'第二次搵佢哋裝修，質素一如既往好，強烈推薦。'}
+    ]},
+  { id:2, name:'快靚平裝修', cat:'全屋裝修', district:'觀塘', rating:1.8, reviews:43, status:'bad',
+    tags:[{t:'爛尾',c:'bad'},{t:'追加費用',c:'bad'},{t:'失蹤',c:'bad'}],
+    desc:'多宗爛尾投訴，收取訂金後失蹤，已列入黑名單。',
+    reports:[
+      {author:'李小姐',date:'2025年2月',rating:1,verified:true,text:'比咗7成訂金，工程做到一半師傅失蹤，損失近10萬！'},
+      {author:'張生',date:'2024年12月',rating:1,verified:false,text:'報價單含糊，完工後追加成3萬蚊，態度惡劣。'}
+    ]},
+  { id:3, name:'精工冷氣工程', cat:'冷氣維修', district:'旺角', rating:4.5, reviews:89, status:'good',
+    tags:[{t:'有牌照',c:'good'},{t:'準時',c:'good'},{t:'收費合理',c:'good'}],
+    desc:'持牌冷氣技工，安裝及維修，明碼實價。',
+    reports:[{author:'黃太',date:'2025年3月',rating:5,verified:true,text:'師傅好專業，洗完冷氣製冷效果即刻好番，收費合理。'}]},
+  { id:4, name:'速達鎖匙服務', cat:'換鎖開鎖', district:'深水埗', rating:3.2, reviews:31, status:'warn',
+    tags:[{t:'收費偏高',c:'bad'},{t:'有投訴',c:'bad'}],
+    desc:'有部分客人反映臨時追加收費，建議事先確認總價。',
+    reports:[{author:'吳生',date:'2025年1月',rating:2,verified:false,text:'開鎖後話要換配件，原本$300變成$800，感覺被呃。'}]},
+  { id:5, name:'靚顏油漆工程', cat:'油漆工程', district:'沙田', rating:4.6, reviews:56, status:'good',
+    tags:[{t:'手工細緻',c:'good'},{t:'環保油漆',c:'neutral'},{t:'有保養',c:'good'}],
+    desc:'專業油漆師傅，採用低VOC環保漆，工程整潔。',
+    reports:[{author:'林太',date:'2025年2月',rating:5,verified:true,text:'師傅認真負責，全屋油漆效果好靚，仲有1年保養！'}]}
+];
+
+const traps = [
+  {cls:'high',badge:'高風險',name:'預付比例過高',detail:'要求簽約即付70%訂金。正常應係不多於30%，餘款分階段支付。',tip:'要求改為：簽約30%、開工30%、完工40%'},
+  {cls:'high',badge:'高風險',name:'項目描述含糊',detail:'「泥水工程 $25,000」冇列明工序、面積、物料品牌型號。',tip:'要求逐項列明：工序、施工面積、物料品牌'},
+  {cls:'mid',badge:'中風險',name:'冇保養條款',detail:'報價單完全冇提及保養期及保養範圍。',tip:'要求加入最少1年保養並列明保養範圍'},
+  {cls:'mid',badge:'中風險',name:'追加費用無上限',detail:'「如有額外工程另行報價」——無上限，隨時獅子開大口。',tip:'要求追加費用需書面確認並設定上限'},
+  {cls:'low',badge:'低風險',name:'冇列明工期',detail:'報價單冇寫明預計完工日期及延誤罰款條款。',tip:'要求加入明確工期及逾期罰款條款'}
+];
+
+let curCat = '全部', curType = 0, curRating = 3;
+
+const statusLabel = {good:'✅ 已驗證', warn:'⚠️ 有投訴', bad:'🚫 黑名單'};
+const sc = c => c.rating>=4?'good':c.rating>=3?'warn':'bad';
+const stars = n => '★'.repeat(n)+'☆'.repeat(5-n);
+
+function showPage(name, btn) {
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  btn.classList.add('active');
+}
+
+function setCat(cat, btn) {
+  curCat = cat;
+  document.querySelectorAll('.cat').forEach(c=>c.classList.remove('active'));
+  btn.classList.add('active');
+  render();
+}
+
+function render() {
+  const q = document.getElementById('search-input').value.toLowerCase();
+  const list = companies.filter(c =>
+    (curCat==='全部'||c.cat===curCat) &&
+    (!q||c.name.includes(q)||c.district.includes(q))
+  ).sort((a,b)=>b.rating-a.rating);
+
+  document.getElementById('company-list').innerHTML = list.map(c => `
+    <div class="card is-${c.status}" onclick="openModal(${c.id})">
+      <div class="card-inner">
+        <div class="score-box ${sc(c)}">
+          <div class="score-num ${sc(c)}">${c.rating.toFixed(1)}</div>
+          <div class="score-star ${sc(c)}">★</div>
+        </div>
+        <div class="card-info">
+          <div class="card-name">${c.name}</div>
+          <div class="card-meta">${c.cat} · ${c.district}</div>
+          <div class="card-tags">${c.tags.map(t=>`<span class="ctag ${t.c}">${t.t}</span>`).join('')}</div>
+        </div>
+        <div class="card-right">
+          <div class="status-pill ${c.status}">${statusLabel[c.status]}</div>
+          <div class="card-reviews">💬 ${c.reviews}</div>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function openModal(id) {
+  const c = companies.find(x=>x.id===id);
+  const s = sc(c);
+  document.getElementById('modal').innerHTML = `
+    <div class="modal-handle"></div>
+    <div class="modal-head">
+      <div class="modal-status ${s}">${statusLabel[c.status]}</div>
+      <div class="modal-name">${c.name}</div>
+      <div class="modal-sub">${c.cat} · ${c.district}</div>
+    </div>
+    <div class="modal-stats">
+      <div class="mstat"><div class="mstat-val" style="color:var(--${s==='good'?'green':s==='warn'?'orange':'red'})">${c.rating.toFixed(1)}</div><div class="mstat-label">評分</div></div>
+      <div class="mstat"><div class="mstat-val" style="color:#2563eb">${c.reviews}</div><div class="mstat-label">評價數</div></div>
+      <div class="mstat"><div class="mstat-val" style="color:var(--green)">${c.reports.filter(r=>r.verified).length}</div><div class="mstat-label">有單據</div></div>
+    </div>
+    <div class="modal-body">
+      <div class="modal-section">公司簡介</div>
+      <div class="modal-desc">${c.desc}</div>
+      <div class="modal-section">用戶評價</div>
+      ${c.reports.map(r=>`
+        <div class="review">
+          <div class="review-top">
+            <div><span class="review-stars">${stars(r.rating)}</span>${r.verified?' <span class="review-verified">✓ 有單據</span>':''}</div>
+            <span class="review-author">${r.author}</span>
+          </div>
+          <div class="review-text">${r.text}</div>
+          <div class="review-date">${r.date}</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+  document.getElementById('overlay').classList.add('open');
+}
+
+function closeModal(e) {
+  if(e.target===document.getElementById('overlay'))
+    document.getElementById('overlay').classList.remove('open');
+}
+
+// 掃描
+document.getElementById('scan-ta').addEventListener('input',function(){
+  document.getElementById('scan-btn').disabled=!this.value.trim();
+});
+
+function loadSample(){
+  document.getElementById('scan-ta').value=`靚家裝修工程報價單\n\n1. 拆除工程   $8,000\n2. 泥水工程  $25,000\n3. 水電工程  $15,000（包材料）\n4. 油漆工程  $12,000\n5. 地板工程  $18,000\n6. 廚房工程  $35,000\n\n總計：$113,000\n付款：簽約付70%，完工付30%\n備註：如有額外工程另行報價`;
+  document.getElementById('scan-btn').disabled=false;
+  document.getElementById('scan-result').style.display='none';
+}
+
+function doScan(){
+  const btn=document.getElementById('scan-btn');
+  btn.innerHTML='<div class="spin"></div> 分析緊...';
+  btn.disabled=true;
+  document.getElementById('scan-result').style.display='none';
+  setTimeout(()=>{
+    document.getElementById('trap-list').innerHTML=traps.map(t=>`
+      <div class="trap ${t.cls}">
+        <div class="trap-top"><span class="trap-badge ${t.cls}">${t.badge}</span><span class="trap-name">${t.name}</span></div>
+        <div class="trap-detail">${t.detail}</div>
+        <div class="trap-tip"><span>💡</span><span class="trap-tip-text">${t.tip}</span></div>
+      </div>
+    `).join('');
+    document.getElementById('scan-result').style.display='block';
+    setTimeout(()=>{document.getElementById('bar').style.width='72%';},100);
+    btn.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg> 即時掃描';
+    btn.disabled=false;
+    document.getElementById('scan-result').scrollIntoView({behavior:'smooth'});
+  },1800);
+}
+
+// 投稿
+function setType(t){
+  curType=t;
+  document.getElementById('t0').classList.toggle('active',t===0);
+  document.getElementById('t1').classList.toggle('active',t===1);
+  const btn=document.getElementById('submit-btn');
+  btn.className='btn-submit '+(t===0?'praise':'complaint');
+  btn.textContent=t===0?'✅ 提交好評':'🚨 提交投訴';
+}
+
+function setRating(r){
+  curRating=r;
+  document.querySelectorAll('.sstar').forEach((b,i)=>b.textContent=i<r?'⭐':'☆');
+}
+
+function doSubmit(){
+  if(!document.getElementById('cname').value.trim()||!document.getElementById('fcontent').value.trim()){
+    toast('請填寫公司名稱及內容');return;
+  }
+  toast('多謝投稿！審核後會公開顯示 🙏');
+  document.getElementById('cname').value='';
+  document.getElementById('fcontent').value='';
+  setRating(3);
+}
+
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2800);
+}
+
+render();
+</script>
+
+</body>
+</html>
